@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartDNS History</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .row-enter { animation: highlight 1s ease-out; }
+        @keyframes highlight { 0% { background-color: #fef08a; } 100% { background-color: transparent; } }
+        /* Custom Scrollbar for table */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans p-4 md:p-6 h-screen flex flex-col overflow-hidden">
+    <div id="app" class="max-w-7xl mx-auto w-full flex flex-col h-full">
+        <!-- Header -->
+        <div class="flex flex-col md:flex-row justify-between items-center mb-4 flex-shrink-0 gap-4">
+            <h1 class="text-2xl font-bold text-blue-600 flex items-center gap-2">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                SmartDNS Audit Log
+            </h1>
+            <div class="flex items-center gap-2">
+                <span id="status" class="text-xs font-semibold px-2 py-1 rounded bg-gray-200 uppercase tracking-wide">Connecting...</span>
+                <button id="pauseBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow transition text-sm font-medium">
+                    Pause
+                </button>
+                <button id="clearBtn" class="bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 px-4 py-2 rounded shadow transition text-sm font-medium">
+                    Clear
+                </button>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="bg-white p-3 rounded-lg shadow mb-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 flex-shrink-0 border border-gray-200">
+            <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">Domain</label>
+                <input type="text" id="filterDomain" placeholder="google.com" class="border p-2 rounded w-full text-sm focus:ring-2 focus:ring-blue-500 outline-none border-gray-300">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">Client IP</label>
+                <input type="text" id="filterIp" placeholder="192.168.1.1" class="border p-2 rounded w-full text-sm focus:ring-2 focus:ring-blue-500 outline-none border-gray-300">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">Type</label>
+                <input type="text" id="filterType" placeholder="1, 28" class="border p-2 rounded w-full text-sm focus:ring-2 focus:ring-blue-500 outline-none border-gray-300">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">Group</label>
+                <input type="text" id="filterGroup" placeholder="china, default" class="border p-2 rounded w-full text-sm focus:ring-2 focus:ring-blue-500 outline-none border-gray-300">
+            </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="mb-2 text-xs text-gray-500 flex justify-between items-center px-1 flex-shrink-0">
+            <div class="flex gap-4">
+                <span>Showing: <b id="countShown" class="text-gray-900">0</b></span>
+                <span>Buffer: <b id="countTotal" class="text-gray-900">0</b></span>
+            </div>
+            <div class="italic">Live updates active</div>
+        </div>
+
+        <!-- Table Container -->
+        <div class="bg-white rounded-lg shadow flex-grow overflow-hidden border border-gray-200 flex flex-col relative">
+            <div class="overflow-x-auto overflow-y-auto h-full">
+                <table class="min-w-full text-left border-collapse">
+                    <thead class="bg-gray-50 text-gray-600 uppercase text-xs font-semibold sticky top-0 z-10 shadow-sm">
+                        <tr>
+                            <th class="px-4 py-3 border-b">Time</th>
+                            <th class="px-4 py-3 border-b">Client IP</th>
+                            <th class="px-4 py-3 border-b">Domain</th>
+                            <th class="px-4 py-3 border-b">Type</th>
+                            <th class="px-4 py-3 border-b">Speed</th>
+                            <th class="px-4 py-3 border-b">Group</th>
+                            <th class="px-4 py-3 border-b">Result</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody" class="divide-y divide-gray-100 text-sm">
+                        <!-- Rows injected here -->
+                    </tbody>
+                </table>
+                <div id="emptyState" class="hidden absolute inset-0 flex items-center justify-center text-gray-400">
+                    No records found matching filters
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const MAX_LOGS = 1000;
+        let logs = [];
+        let isPaused = false;
+        let filters = { domain: '', ip: '', type: '', group: '' };
+
+        const statusEl = document.getElementById('status');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const tableBody = document.getElementById('tableBody');
+        const countShown = document.getElementById('countShown');
+        const countTotal = document.getElementById('countTotal');
+        const emptyState = document.getElementById('emptyState');
+
+        const filterInputs = {
+            domain: document.getElementById('filterDomain'),
+            ip: document.getElementById('filterIp'),
+            type: document.getElementById('filterType'),
+            group: document.getElementById('filterGroup'),
+        };
+
+        // Event Listeners
+        pauseBtn.addEventListener('click', () => {
+            isPaused = !isPaused;
+            pauseBtn.textContent = isPaused ? 'Resume' : 'Pause';
+            pauseBtn.classList.toggle('bg-red-600', isPaused);
+            pauseBtn.classList.toggle('bg-blue-600', !isPaused);
+            pauseBtn.classList.toggle('hover:bg-red-700', isPaused);
+            pauseBtn.classList.toggle('hover:bg-blue-700', !isPaused);
+        });
+
+        clearBtn.addEventListener('click', () => {
+            logs = [];
+            render();
+        });
+
+        Object.keys(filterInputs).forEach(key => {
+            filterInputs[key].addEventListener('input', (e) => {
+                filters[key] = e.target.value.toLowerCase();
+                render();
+            });
+        });
+
+        // WebSocket
+        function connect() {
+            const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            const ws = new WebSocket(`${proto}://${window.location.host}/ws`);
+
+            ws.onopen = () => {
+                statusEl.textContent = 'Connected';
+                statusEl.className = 'text-xs font-semibold px-2 py-1 rounded bg-green-100 text-green-800 uppercase tracking-wide';
+            };
+
+            ws.onmessage = (event) => {
+                if (isPaused) return;
+
+                const data = JSON.parse(event.data);
+                // Handle both single object and array
+                if (Array.isArray(data)) {
+                    // Not currently used by backend (sends one by one), but safe to keep
+                    logs.unshift(...data.reverse());
+                } else {
+                    logs.unshift(data);
+                }
+
+                // Trim
+                if (logs.length > MAX_LOGS) {
+                    logs.length = MAX_LOGS;
+                }
+
+                render();
+            };
+
+            ws.onclose = () => {
+                statusEl.textContent = 'Disconnected';
+                statusEl.className = 'text-xs font-semibold px-2 py-1 rounded bg-red-100 text-red-800 uppercase tracking-wide';
+                setTimeout(connect, 3000);
+            };
+        }
+
+        let renderFrame;
+        function render() {
+            if (renderFrame) cancelAnimationFrame(renderFrame);
+            renderFrame = requestAnimationFrame(() => {
+                const filtered = logs.filter(l => 
+                    l.domain.toLowerCase().includes(filters.domain) &&
+                    l.client_ip.includes(filters.ip) &&
+                    String(l.qtype).includes(filters.type) &&
+                    l.group.toLowerCase().includes(filters.group)
+                );
+
+                countShown.textContent = filtered.length;
+                countTotal.textContent = logs.length;
+                
+                emptyState.classList.toggle('hidden', filtered.length > 0);
+
+                // Optimization: Only render top 50 visible rows to DOM if list is huge
+                // But native table handles 1000 rows okay usually. Let's limit to 100 rendered for performance if needed.
+                // For now, render all filtered.
+                
+                const html = filtered.slice(0, 500).map(l => `
+                    <tr class="hover:bg-blue-50 border-b border-gray-100 last:border-0 transition-colors duration-150">
+                        <td class="px-4 py-2 whitespace-nowrap text-gray-500 font-mono text-xs">${l.timestamp.split(' ')[1] || l.timestamp}</td>
+                        <td class="px-4 py-2 whitespace-nowrap font-mono text-xs text-gray-600">${l.client_ip}</td>
+                        <td class="px-4 py-2 font-medium text-gray-900 break-all">${l.domain}</td>
+                        <td class="px-4 py-2 whitespace-nowrap text-xs text-gray-500 font-mono">${l.qtype}</td>
+                        <td class="px-4 py-2 whitespace-nowrap text-xs font-semibold ${l.speed_ms > 100 ? 'text-orange-500' : 'text-green-600'}">${l.speed_ms}ms</td>
+                        <td class="px-4 py-2 whitespace-nowrap text-xs"><span class="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200">${l.group}</span></td>
+                        <td class="px-4 py-2 text-xs text-gray-600 break-all max-w-xs font-mono">${l.result}</td>
+                    </tr>
+                `).join('');
+                
+                tableBody.innerHTML = html;
+            });
+        }
+
+        connect();
+    </script>
+</body>
+</html>
