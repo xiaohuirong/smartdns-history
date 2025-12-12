@@ -1,0 +1,19 @@
+[Unit]
+Description=SmartDNS History Web Dashboard
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/smartdns-history --log /var/log/smartdns/smartdns-audit.log --port 3000
+# WorkingDirectory: This is where the service will run. Any relative paths in --log will be relative to this.
+# Since we use an absolute path for --log, this directory mostly matters for where its own logs (app.log) would go if not redirected.
+# Or any other files it might create.
+WorkingDirectory=/var/lib/smartdns-history
+# User and Group: It's recommended to run services under a dedicated, unprivileged user.
+# For simplicity, these are omitted here. A more complete package might create a 'smartdns-history' user/group.
+# If omitted, systemd will usually run it as root, which is generally discouraged.
+# Consider adding User=smartdns-history and Group=smartdns-history after creating them.
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
