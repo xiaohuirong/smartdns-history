@@ -54,9 +54,13 @@ pub struct LogEntry {
 ## Key Files & Logic
 
 -   **`src/main.rs`**:
-    -   `main()`: Sets up the Tokio runtime, parses CLI args (using `clap`), initializes shared state, spawns the log watcher task, and starts the Axum server.
+    -   `main()`: Sets up the Tokio runtime, loads configuration (CLI > Config File > Defaults), initializes shared state, spawns the log watcher task, and starts the Axum server.
     -   `ws_handler()`: Upgrades HTTP connection to WebSocket.
     -   `handle_socket()`: Manages the WebSocket session (sending history + streaming updates).
+
+-   **`config.toml`**:
+    -   Optional configuration file for setting the log file path and server port.
+    -   Loaded via the `config` crate.
 
 -   **`src/parser.rs`**:
     -   Contains a compiled `Regex` (using `OnceLock`) to efficiently parse log lines.
@@ -83,4 +87,3 @@ cargo build --release
 -   **Embedded Assets**: Currently `index.html` is included via `include_str!`. For more complex assets, `rust-embed` could be used.
 -   **Server-side Filtering**: Move filtering logic to the backend if log volume becomes too high for the client to handle.
 -   **Persistent Storage**: Use a lightweight DB (SQLite) instead of in-memory `VecDeque` if long-term history is needed.
--   **Configuration**: Add a `config.toml` file support in addition to CLI args.

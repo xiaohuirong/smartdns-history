@@ -13,6 +13,7 @@ depends=('systemd') # For the systemd service file
 makedepends=("cargo" "git")
 source=("${_pkgname}::git+${url}.git") # Use .git suffix for source url
 sha256sums=('SKIP')
+backup=("etc/${_pkgname}/config.toml")
 
 prepare() {
     cd "${srcdir}/${_pkgname}"
@@ -50,6 +51,10 @@ package() {
 	install -d "${pkgdir}/usr/bin"
 	install -Dm755 "${srcdir}/${_pkgname}/target/release/${_pkgname}" "${pkgdir}/usr/bin/${_pkgname}"
     
+    # Install configuration
+    install -d "${pkgdir}/etc/${_pkgname}"
+    install -Dm644 "${srcdir}/${_pkgname}/config.toml" "${pkgdir}/etc/${_pkgname}/config.toml"
+
     # Install documentation
     install -d "${pkgdir}/usr/share/doc/${_pkgname}"
     install -Dm644 "${srcdir}/${_pkgname}/README.md" "${pkgdir}/usr/share/doc/${_pkgname}/README.md"

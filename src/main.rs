@@ -8,8 +8,10 @@ use axum::{
     Router,
 };
 use clap::Parser;
+use config::{Config, File};
 use futures::StreamExt;
 use linemux::MuxedLines;
+use serde::Deserialize;
 use std::{collections::VecDeque, net::SocketAddr, path::PathBuf, sync::Arc};
 use tokio::sync::{broadcast, RwLock};
 use tracing::info;
@@ -17,16 +19,69 @@ use tracing::info;
 // Config
 const HISTORY_SIZE: usize = 200; // Keep last 200 lines in backend memory for new clients
 
+#[derive(Debug, Deserialize)]
+struct Settings {
+    log_file: PathBuf,
+    port: u16,
+}
+
+impl Settings {
+    fn new(config_path: Option<PathBuf>, args: &Args) -> Result<Self, config::ConfigError> {
+        let mut builder = Config::builder();
+
+        // 1. Default values
+        builder = builder
+            .set_default("log_file", "smartdns-audit.log")?
+            .set_default("port", 3000)?;
+
+        // 2. Config file
+        if let Some(path) = config_path {
+             builder = builder.add_source(File::from(path));
+        } else {
+             // Try standard locations
+             let etc_path = PathBuf::from("/etc/smartdns-history/config.toml");
+             if etc_path.exists() {
+                 builder = builder.add_source(File::from(etc_path));
+             } else {
+                 // Try local config.toml
+                 let local_path = PathBuf::from("config.toml");
+                 if local_path.exists() {
+                     builder = builder.add_source(File::from(local_path));
+                 }
+             }
+        }
+
+        // 3. Environment variables
+        builder = builder.add_source(config::Environment::with_prefix("SMARTDNS_HISTORY"));
+
+        let mut settings: Settings = builder.build()?.try_deserialize()?;
+
+        // 4. CLI Overrides
+        if let Some(log) = &args.log {
+            settings.log_file = log.clone();
+        }
+        if let Some(port) = args.port {
+            settings.port = port;
+        }
+
+        Ok(settings)
+    }
+}
+
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
+    /// Path to the configuration file
+    #[arg(short, long)]
+    config: Option<PathBuf>,
+
     /// Path to the smartdns audit log file
-    #[arg(short, long, default_value = "smartdns-audit.log")]
-    log: PathBuf,
+    #[arg(short, long)]
+    log: Option<PathBuf>,
 
     /// Port to listen on
-    #[arg(short, long, default_value_t = 3000)]
-    port: u16,
+    #[arg(short, long)]
+    port: Option<u16>,
 }
 
 struct AppState {
@@ -38,6 +93,14 @@ struct AppState {
 async fn main() {
     tracing_subscriber::fmt::init();
     let args = Args::parse();
+    
+    let settings = match Settings::new(args.config.clone(), &args) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Configuration error: {}", e);
+            std::process::exit(1);
+        }
+    };
 
     // Broadcast channel
     let (tx, _) = broadcast::channel(1000);
@@ -49,11 +112,11 @@ async fn main() {
     });
 
     println!("Starting up...");
-    info!("Using log file: {:?}", args.log);
+    info!("Using log file: {:?}", settings.log_file);
 
     // Start log watcher
     let state_clone = state.clone();
-    let log_path = args.log.clone();
+    let log_path = settings.log_file.clone();
     tokio::spawn(async move {
         watch_log(state_clone, log_path).await;
     });
@@ -64,7 +127,7 @@ async fn main() {
         .route("/ws", get(ws_handler))
         .with_state(state);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], args.port));
+    let addr = SocketAddr::from(([0, 0, 0, 0], settings.port));
     info!("SmartDNS History listening on http://{}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();

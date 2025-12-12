@@ -50,7 +50,36 @@ By default, it looks for `smartdns-audit.log` in the current directory and liste
 
 ### Custom Configuration
 
-You can specify the log file path and the server port using command-line arguments.
+You can configure the application using a `config.toml` file, command-line arguments, or environment variables. The precedence is:
+1. Command-line arguments
+2. Configuration file
+3. Environment variables (prefixed with `SMARTDNS_HISTORY_`)
+4. Defaults
+
+#### Configuration File
+
+By default, the application looks for a configuration file in:
+- `/etc/smartdns-history/config.toml`
+- `./config.toml`
+
+You can also specify a custom path:
+```bash
+./target/release/smartdns-history --config /path/to/my_config.toml
+```
+
+**Example `config.toml`:**
+```toml
+# Path to the smartdns audit log file
+# Can be absolute or relative to the working directory
+log_file = "/var/log/smartdns/smartdns-audit.log"
+
+# Port to listen on
+port = 3000
+```
+
+#### Command Line Arguments
+
+CLI arguments override config file settings.
 
 ```bash
 # Specifying a custom log file path

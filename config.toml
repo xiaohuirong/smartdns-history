@@ -1,0 +1,8 @@
+# SmartDNS History Configuration
+
+# Path to the smartdns audit log file
+# Can be absolute or relative to the working directory
+log_file = "smartdns-audit.log"
+
+# Port to listen on
+port = 3000
